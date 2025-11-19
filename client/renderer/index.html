@@ -444,8 +444,10 @@
                    onkeypress="if(event.key === 'Enter') submitMasterPassword()" />
           </div>
           <div id="masterPasswordError" class="message error" style="display: none;"></div>
-          <button onclick="submitMasterPassword()">Unlock</button>
-          <button class="danger" onclick="cancelMasterPassword()">Cancel</button>
+          <div style="display: flex; gap: 10px; align-items: center; margin-top: 15px;">
+            <button onclick="submitMasterPassword()">Unlock</button>
+            <button class="danger" onclick="logout()">Logout</button>
+          </div>
           <p style="margin-top: 15px; font-size: 12px; color: #999;">Press Enter to submit</p>
         </div>
       </div>
@@ -461,7 +463,10 @@
                    onkeypress="if(event.key === 'Enter') unlockApplication()" />
           </div>
           <div id="unlockError" class="message error" style="display: none;"></div>
-          <button onclick="unlockApplication()">Unlock</button>
+          <div style="display: flex; gap: 10px; align-items: center; margin-top: 15px;">
+            <button onclick="unlockApplication()">Unlock</button>
+            <button class="danger" onclick="logout()">Logout</button>
+          </div>
         </div>
       </div>
 

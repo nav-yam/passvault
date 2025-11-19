@@ -4,6 +4,7 @@ const db = require('better-sqlite3')('./db/app.db');
 const authRoutes = require('./routes/auth');
 const authenticateToken = require('./middleware/auth');
 const checkVaultAccess = require('./middleware/vaultAccess');
+const { createRateLimiter, recordFailedAttempt, resetFailedAttempts } = require('./middleware/rateLimit');
 const { encrypt, decrypt, encryptWithKey, decryptWithKey, generateVaultKey } = require('./utils/encryption');
 
 const app = express();
@@ -26,15 +27,21 @@ function getVaultKey(vaultId, userId, masterPassword) {
         if (!user || !user.encryption_salt) return null;
         try {
             const salt = Buffer.from(user.encryption_salt, 'hex');
-            return decrypt(vault.vault_key_encrypted, masterPassword, salt);
-        } catch {
+            const decrypted = decrypt(vault.vault_key_encrypted, masterPassword, salt);
+            if (!decrypted || decrypted.trim() === '') {
+                console.error('Decrypted vault key is empty for owner');
+                return null;
+            }
+            return decrypted;
+        } catch (error) {
+            console.error('Failed to decrypt owner vault key:', error.message);
             return null;
         }
     } else {
         const member = db.prepare('SELECT encrypted_vault_key FROM vault_members WHERE vault_id = ? AND user_id = ?').get(vaultId, userId);
         if (!member) return null;
         
-        if (!member.encrypted_vault_key) {
+        if (!member.encrypted_vault_key || member.encrypted_vault_key.trim() === '') {
             return null;
         }
         
@@ -42,49 +49,17 @@ function getVaultKey(vaultId, userId, masterPassword) {
         if (!user || !user.encryption_salt) return null;
         try {
             const salt = Buffer.from(user.encryption_salt, 'hex');
-            return decrypt(member.encrypted_vault_key, masterPassword, salt);
-        } catch {
+            const decrypted = decrypt(member.encrypted_vault_key, masterPassword, salt);
+            if (!decrypted || decrypted.trim() === '') {
+                return null;
+            }
+            return decrypted;
+        } catch (error) {
+            // Decryption failed - likely wrong master password
+            console.error('Failed to decrypt member vault key:', error.message);
             return null;
         }
     }
-}
-
-function initializeMemberVaultKey(vaultId, memberUserId, memberMasterPassword) {
-    const vault = db.prepare('SELECT user_id, vault_key_encrypted FROM vaults WHERE id = ?').get(vaultId);
-    if (!vault || !vault.vault_key_encrypted) return null;
-
-    const member = db.prepare('SELECT encrypted_vault_key FROM vault_members WHERE vault_id = ? AND user_id = ?').get(vaultId, memberUserId);
-    if (!member) return null;
-    
-    if (member.encrypted_vault_key) {
-        return getVaultKey(vaultId, memberUserId, memberMasterPassword);
-    }
-
-    const ownerUser = db.prepare('SELECT encryption_salt FROM users WHERE id = ?').get(vault.user_id);
-    if (!ownerUser || !ownerUser.encryption_salt) return null;
-
-    let vaultKeyHex = null;
-    try {
-        const ownerSalt = Buffer.from(ownerUser.encryption_salt, 'hex');
-        vaultKeyHex = decrypt(vault.vault_key_encrypted, memberMasterPassword, ownerSalt);
-    } catch {
-        vaultKeyHex = null;
-    }
-
-    if (!vaultKeyHex) {
-        return null;
-    }
-
-    const memberUser = db.prepare('SELECT encryption_salt FROM users WHERE id = ?').get(memberUserId);
-    if (!memberUser || !memberUser.encryption_salt) return null;
-    
-    const memberSalt = Buffer.from(memberUser.encryption_salt, 'hex');
-    const memberEncryptedKey = encrypt(vaultKeyHex, memberMasterPassword, memberSalt);
-    
-    db.prepare('UPDATE vault_members SET encrypted_vault_key = ? WHERE vault_id = ? AND user_id = ?')
-        .run(memberEncryptedKey, vaultId, memberUserId);
-    
-    return vaultKeyHex;
 }
 
 function ensureVaultKey(vaultId, userId, masterPassword) {
@@ -157,14 +132,14 @@ app.post('/api/vaults', authenticateToken, (req, res) => {
     }
 });
 
-app.post('/api/vaults/:vault_id/members', authenticateToken, checkVaultAccess, (req, res) => {
+app.post('/api/vaults/:vault_id/members', authenticateToken, checkVaultAccess, createRateLimiter('vault_unlock', 3, 30), (req, res) => {
     try {
         if (!req.vaultAccess || !req.vaultAccess.isOwner) {
             return res.status(403).json({ error: 'Only vault owner can add members' });
         }
 
         const vaultId = parseInt(req.params.vault_id);
-        const { username, ownerMasterPassword } = req.body;
+        const { username, ownerMasterPassword, memberMasterPassword } = req.body;
         if (!username) {
             return res.status(400).json({ error: 'Username is required' });
         }
@@ -185,12 +160,27 @@ app.post('/api/vaults/:vault_id/members', authenticateToken, checkVaultAccess, (
 
         const vaultKeyHex = ensureVaultKey(vaultId, req.user.userId, ownerMasterPassword);
         if (!vaultKeyHex) {
+            // Invalid master password - record failed attempt
+            const rateLimitResponse = recordFailedAttempt(req, res);
+            if (rateLimitResponse) return; // Rate limit response already sent
             return res.status(400).json({ error: 'Invalid owner master password' });
+        }
+        // Success - reset failed attempts
+        resetFailedAttempts(req);
+
+        let memberEncryptedKey = null;
+        if (memberMasterPassword) {
+            // Encrypt vault key with member's master password
+            const memberUser = db.prepare('SELECT encryption_salt FROM users WHERE id = ?').get(targetUser.id);
+            if (memberUser && memberUser.encryption_salt) {
+                const memberSalt = Buffer.from(memberUser.encryption_salt, 'hex');
+                memberEncryptedKey = encrypt(vaultKeyHex, memberMasterPassword, memberSalt);
+            }
         }
 
         const stmt = db.prepare('INSERT INTO vault_members (vault_id, user_id, encrypted_vault_key) VALUES (?, ?, ?)');
-        stmt.run(vaultId, targetUser.id, null);
-        res.json({ success: true, message: 'Member added. They will need to provide their master password when first accessing the vault.' });
+        stmt.run(vaultId, targetUser.id, memberEncryptedKey);
+        res.json({ success: true, message: memberEncryptedKey ? 'Member added successfully.' : 'Member added. They will need to provide their master password when first accessing the vault.' });
     } catch (error) {
         console.error('Error adding vault member:', error);
         res.status(500).json({ error: 'Internal server error' });
@@ -231,7 +221,7 @@ app.get('/api/vaults/:vault_id/members', authenticateToken, checkVaultAccess, (r
     }
 });
 
-app.get('/api/items', authenticateToken, (req, res) => {
+app.get('/api/items', authenticateToken, createRateLimiter('vault_unlock', 3, 30), (req, res) => {
     try {
         const { masterPassword } = req.query;
         let vaultId = req.query.vault_id;
@@ -245,51 +235,75 @@ app.get('/api/items', authenticateToken, (req, res) => {
         }
 
         const vaultIdInt = parseInt(vaultId);
-        const vault = db.prepare('SELECT user_id FROM vaults WHERE id = ?').get(vaultIdInt);
-        if (!vault) {
-            return res.status(404).json({ error: 'Vault not found' });
+        if (isNaN(vaultIdInt)) {
+            return res.status(400).json({ error: 'Invalid vault_id' });
         }
 
+        const vault = db.prepare('SELECT user_id FROM vaults WHERE id = ?').get(vaultIdInt);
+        if (!vault) {
+            // Return 403 instead of 404 for security (don't reveal if vault exists)
+            return res.status(403).json({ error: 'Access denied to this vault' });
+        }
+
+        // Check if user has access to this vault (owner or member)
         if (vault.user_id !== req.user.userId) {
             const member = db.prepare('SELECT id FROM vault_members WHERE vault_id = ? AND user_id = ?').get(vaultIdInt, req.user.userId);
             if (!member) {
-                return res.status(403).json({ error: 'Access denied' });
+                return res.status(403).json({ error: 'Access denied to this vault' });
             }
         }
 
         const items = db.prepare('SELECT id, name, description, password, user_id, vault_id FROM items WHERE vault_id = ?').all(vaultIdInt);
 
         if (masterPassword) {
-            const shared = isSharedVault(vaultIdInt);
-            let vaultKeyHex = getVaultKey(vaultIdInt, req.user.userId, masterPassword);
+            // Check if vault has a vault key (can be shared)
+            const vaultInfo = db.prepare('SELECT vault_key_encrypted FROM vaults WHERE id = ?').get(vaultIdInt);
+            const hasVaultKey = vaultInfo && vaultInfo.vault_key_encrypted;
             
-            if (shared && !vaultKeyHex && vault.user_id !== req.user.userId) {
-                vaultKeyHex = initializeMemberVaultKey(vaultIdInt, req.user.userId, masterPassword);
-            }
-            
-            if (shared && !vaultKeyHex) {
-                return res.json(items.map(item => ({
-                    ...item,
-                    password: null,
-                    decryptionError: 'Failed to decrypt. Invalid master password or vault key not initialized.'
-                })));
+            let vaultKeyHex = null;
+            if (hasVaultKey) {
+                // Vault has a vault key, so use it for decryption (shared vault pattern)
+                vaultKeyHex = getVaultKey(vaultIdInt, req.user.userId, masterPassword);
+                if (!vaultKeyHex) {
+                    // Check if member exists but doesn't have encrypted_vault_key
+                    const member = db.prepare('SELECT encrypted_vault_key FROM vault_members WHERE vault_id = ? AND user_id = ?').get(vaultIdInt, req.user.userId);
+                    if (member && !member.encrypted_vault_key) {
+                        return res.json(items.map(item => ({
+                            ...item,
+                            password: null,
+                            decryptionError: 'Vault key not initialized for this member. Please contact the vault owner.'
+                        })));
+                    }
+                    // Invalid master password - record failed attempt
+                    const rateLimitResponse = recordFailedAttempt(req, res);
+                    if (rateLimitResponse) return; // Rate limit response already sent
+                    return res.json(items.map(item => ({
+                        ...item,
+                        password: null,
+                        decryptionError: 'Failed to decrypt. Invalid master password or vault key not initialized. Please contact the vault owner.'
+                    })));
+                }
+                // Success - reset failed attempts
+                resetFailedAttempts(req);
             }
 
             const decryptedItems = items.map(item => {
                 const decryptedItem = { ...item };
                 if (item.password) {
                     try {
-                        if (shared && vaultKeyHex) {
+                        if (hasVaultKey && vaultKeyHex) {
+                            // Decrypt using vault key
                             const vaultKey = Buffer.from(vaultKeyHex, 'hex');
                             decryptedItem.password = decryptWithKey(item.password, vaultKey);
                         } else {
+                            // Decrypt using master password directly (private vault)
                             const user = db.prepare('SELECT encryption_salt FROM users WHERE id = ?').get(req.user.userId);
                             const salt = Buffer.from(user.encryption_salt, 'hex');
                             decryptedItem.password = decrypt(item.password, masterPassword, salt);
                         }
                     } catch (error) {
                         decryptedItem.password = null;
-                        decryptedItem.decryptionError = 'Failed to decrypt password. Invalid master password.';
+                        decryptedItem.decryptionError = `Failed to decrypt password: ${error.message}`;
                     }
                 }
                 return decryptedItem;
@@ -312,7 +326,7 @@ app.get('/api/items', authenticateToken, (req, res) => {
     }
 });
 
-app.post('/api/items', authenticateToken, (req, res) => {
+app.post('/api/items', authenticateToken, createRateLimiter('vault_unlock', 3, 30), (req, res) => {
     try {
         const { name, description, password, masterPassword, vault_id } = req.body;
         if (!name) {
@@ -329,15 +343,21 @@ app.post('/api/items', authenticateToken, (req, res) => {
         }
 
         const vaultIdInt = parseInt(vaultId);
-        const vault = db.prepare('SELECT user_id FROM vaults WHERE id = ?').get(vaultIdInt);
-        if (!vault) {
-            return res.status(404).json({ error: 'Vault not found' });
+        if (isNaN(vaultIdInt)) {
+            return res.status(400).json({ error: 'Invalid vault_id' });
         }
 
+        const vault = db.prepare('SELECT user_id FROM vaults WHERE id = ?').get(vaultIdInt);
+        if (!vault) {
+            // Return 403 instead of 404 for security (don't reveal if vault exists)
+            return res.status(403).json({ error: 'Access denied to this vault' });
+        }
+
+        // Check if user has access to this vault (owner or member)
         if (vault.user_id !== req.user.userId) {
             const member = db.prepare('SELECT id FROM vault_members WHERE vault_id = ? AND user_id = ?').get(vaultIdInt, req.user.userId);
             if (!member) {
-                return res.status(403).json({ error: 'Access denied' });
+                return res.status(403).json({ error: 'Access denied to this vault' });
             }
         }
 
@@ -348,22 +368,30 @@ app.post('/api/items', authenticateToken, (req, res) => {
             }
 
             try {
-                const shared = isSharedVault(vaultIdInt);
-                let vaultKeyHex = getVaultKey(vaultIdInt, req.user.userId, masterPassword);
+                // Check if vault has a vault key (can be shared)
+                const vaultInfo = db.prepare('SELECT vault_key_encrypted FROM vaults WHERE id = ?').get(vaultIdInt);
+                const hasVaultKey = vaultInfo && vaultInfo.vault_key_encrypted;
                 
-                if (shared) {
+                let vaultKeyHex = null;
+                if (hasVaultKey) {
+                    // Vault has a vault key, so use it for encryption (shared vault pattern)
+                    vaultKeyHex = getVaultKey(vaultIdInt, req.user.userId, masterPassword);
                     if (!vaultKeyHex) {
-                        const vault = db.prepare('SELECT user_id FROM vaults WHERE id = ?').get(vaultIdInt);
-                        if (vault && vault.user_id !== req.user.userId) {
-                            vaultKeyHex = initializeMemberVaultKey(vaultIdInt, req.user.userId, masterPassword);
-                        }
+                        // Invalid master password - record failed attempt
+                        const rateLimitResponse = recordFailedAttempt(req, res);
+                        if (rateLimitResponse) return; // Rate limit response already sent
+                        return res.status(400).json({ error: 'Invalid master password for vault. Please provide the correct master password.' });
                     }
-                    if (!vaultKeyHex) {
-                        return res.status(400).json({ error: 'Invalid master password for shared vault' });
-                    }
+                    // Success - reset failed attempts
+                    resetFailedAttempts(req);
                     const vaultKey = Buffer.from(vaultKeyHex, 'hex');
+                    if (vaultKey.length !== 32) {
+                        console.error(`Invalid vault key length: ${vaultKey.length}, expected 32`);
+                        return res.status(500).json({ error: 'Invalid vault key format' });
+                    }
                     encryptedPassword = encryptWithKey(password, vaultKey);
                 } else {
+                    // Private vault without vault key, use master password directly
                     const user = db.prepare('SELECT encryption_salt FROM users WHERE id = ?').get(req.user.userId);
                     if (!user || !user.encryption_salt) {
                         return res.status(500).json({ error: 'User encryption salt not found' });
@@ -386,7 +414,7 @@ app.post('/api/items', authenticateToken, (req, res) => {
     }
 });
 
-app.put('/api/items/:id', authenticateToken, (req, res) => {
+app.put('/api/items/:id', authenticateToken, createRateLimiter('vault_unlock', 3, 30), (req, res) => {
     try {
         const { name, description, password, masterPassword, vault_id } = req.body;
         const itemId = req.params.id;
@@ -410,12 +438,17 @@ app.put('/api/items/:id', authenticateToken, (req, res) => {
         }
 
         if (vault_id !== undefined && vault_id !== existingItem.vault_id) {
-            const targetVault = db.prepare('SELECT user_id FROM vaults WHERE id = ?').get(parseInt(vault_id));
+            const targetVaultIdInt = parseInt(vault_id);
+            if (isNaN(targetVaultIdInt)) {
+                return res.status(400).json({ error: 'Invalid vault_id' });
+            }
+            const targetVault = db.prepare('SELECT user_id FROM vaults WHERE id = ?').get(targetVaultIdInt);
             if (!targetVault) {
                 return res.status(404).json({ error: 'Target vault not found' });
             }
+            // Check if user has access to target vault (owner or member)
             if (targetVault.user_id !== req.user.userId) {
-                const member = db.prepare('SELECT id FROM vault_members WHERE vault_id = ? AND user_id = ?').get(parseInt(vault_id), req.user.userId);
+                const member = db.prepare('SELECT id FROM vault_members WHERE vault_id = ? AND user_id = ?').get(targetVaultIdInt, req.user.userId);
                 if (!member) {
                     return res.status(403).json({ error: 'Access denied to target vault' });
                 }
@@ -445,18 +478,28 @@ app.put('/api/items/:id', authenticateToken, (req, res) => {
 
                 try {
                     const targetVaultId = vault_id !== undefined ? parseInt(vault_id) : existingItem.vault_id;
-                    const shared = isSharedVault(targetVaultId);
-                    const vaultKeyHex = getVaultKey(targetVaultId, req.user.userId, masterPassword);
+                    // Check if vault has a vault key (can be shared)
+                    const vaultInfo = db.prepare('SELECT vault_key_encrypted FROM vaults WHERE id = ?').get(targetVaultId);
+                    const hasVaultKey = vaultInfo && vaultInfo.vault_key_encrypted;
                     
-                    if (shared) {
+                    let vaultKeyHex = null;
+                    if (hasVaultKey) {
+                        // Vault has a vault key, so use it for encryption (shared vault pattern)
+                        vaultKeyHex = getVaultKey(targetVaultId, req.user.userId, masterPassword);
                         if (!vaultKeyHex) {
-                            return res.status(400).json({ error: 'Invalid master password for shared vault' });
+                            // Invalid master password - record failed attempt
+                            const rateLimitResponse = recordFailedAttempt(req, res);
+                            if (rateLimitResponse) return; // Rate limit response already sent
+                            return res.status(400).json({ error: 'Invalid master password for vault. Please provide the correct master password.' });
                         }
+                        // Success - reset failed attempts
+                        resetFailedAttempts(req);
                         const vaultKey = Buffer.from(vaultKeyHex, 'hex');
                         const encryptedPassword = encryptWithKey(password, vaultKey);
                         updates.push('password = ?');
                         values.push(encryptedPassword);
                     } else {
+                        // Private vault without vault key, use master password directly
                         const user = db.prepare('SELECT encryption_salt FROM users WHERE id = ?').get(req.user.userId);
                         const salt = Buffer.from(user.encryption_salt, 'hex');
                         const encryptedPassword = encrypt(password, masterPassword, salt);

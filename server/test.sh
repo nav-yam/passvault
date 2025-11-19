@@ -105,6 +105,9 @@ if [ $# -gt 0 ]; then
         "shared-vaults"|"test-shared-vaults"|"shared")
             run_test "test-shared-vaults.js" "Shared Vaults Tests"
             ;;
+        "security-bugs"|"test-security-bugs"|"security")
+            run_test "test-security-bugs.js" "Security Bugs Tests"
+            ;;
         "all")
             # Run all tests (fall through to default behavior)
             ;;
@@ -122,6 +125,7 @@ if [ $# -gt 0 ]; then
             echo "  password-strength, strength - Password strength calculator tests (no server required)"
             echo "  password-generation, gen - Password generation tests (no server required)"
             echo "  shared-vaults, shared   - Shared vaults tests (server required)"
+            echo "  security-bugs, security - Security bugs tests (server required)"
             echo "  all                     - Run all tests"
             exit 1
             ;;
@@ -165,6 +169,12 @@ else
 fi
 
 if run_test "test-password-generation.js" "Password Generation Tests"; then
+    ((PASSED++))
+else
+    ((FAILED++))
+fi
+
+if run_test "test-security-bugs.js" "Security Bugs Tests"; then
     ((PASSED++))
 else
     ((FAILED++))
