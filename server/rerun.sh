@@ -91,21 +91,21 @@ kill_server() {
 kill_server
 echo ""
 
-# Rebuild database
-echo -e "${YELLOW}🗄️  Rebuilding database...${NC}"
-if [ -f "db/app.db" ]; then
-    echo -e "${YELLOW}   Removing existing database...${NC}"
-    rm -f db/app.db
-fi
+# # Rebuild database
+# echo -e "${YELLOW}🗄️  Rebuilding database...${NC}"
+# if [ -f "db/app.db" ]; then
+#     echo -e "${YELLOW}   Removing existing database...${NC}"
+#     rm -f db/app.db
+# fi
 
-# Ensure db directory exists
-mkdir -p db
+# # Ensure db directory exists
+# mkdir -p db
 
-# Run database setup
-echo -e "${YELLOW}   Running database setup...${NC}"
-node setupDatabase.js
-echo -e "${GREEN}✅ Database rebuilt successfully${NC}"
-echo ""
+# # Run database setup
+# echo -e "${YELLOW}   Running database setup...${NC}"
+# node setupDatabase.js
+# echo -e "${GREEN}✅ Database rebuilt successfully${NC}"
+# echo ""
 
 # Start server
 echo -e "${BLUE}🚀 Starting server...${NC}"
