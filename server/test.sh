@@ -223,6 +223,9 @@ if [ $# -gt 0 ]; then
         "security-bugs"|"test-security-bugs")
             run_test "test-security-bugs.js" "Security Bugs Tests"
             ;;
+        "login-ratelimit"|"test-login-ratelimit"|"ratelimit")
+            run_test "test-login-ratelimit.js" "Login Rate Limit Tests"
+            ;;
         "security"|"--security"|"-s"|"test-security")
             # Run security-focused test group
             PASSED=0
@@ -252,6 +255,12 @@ if [ $# -gt 0 ]; then
             fi
 
             if run_test "test-security-bugs.js" "Security Bugs Tests"; then
+                ((PASSED++))
+            else
+                ((FAILED++))
+            fi
+
+            if run_test "test-login-ratelimit.js" "Login Rate Limit Tests"; then
                 ((PASSED++))
             else
                 ((FAILED++))
@@ -418,6 +427,12 @@ else
 fi
 
 if run_test "test-security-bugs.js" "Security Bugs Tests"; then
+    ((PASSED++))
+else
+    ((FAILED++))
+fi
+
+if run_test "test-login-ratelimit.js" "Login Rate Limit Tests"; then
     ((PASSED++))
 else
     ((FAILED++))

@@ -4,7 +4,9 @@
 
 const http = require('http');
 
-const API_URL = 'http://localhost:3000';
+// const API_URL = 'http://192.168.2.246:3000';
+// const API_URL = 'http://103.25.231.107:3000';
+const API_URL = 'https://localhost:3000';
 let user1Token = null;
 let user1Id = null;
 let vaultId = null;

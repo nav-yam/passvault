@@ -3,404 +3,28 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Electron Client UI</title>
-    <style>
-      * {
-        box-sizing: border-box;
-        margin: 0;
-        padding: 0;
-      }
-      body {
-        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-        padding: 20px;
-        background: #f5f5f5;
-      }
-      .container {
-        max-width: 600px;
-        margin: 0 auto;
-        background: white;
-        padding: 30px;
-        border-radius: 8px;
-        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-      }
-      h1 {
-        margin-bottom: 20px;
-        color: #333;
-      }
-      h2 {
-        margin-top: 30px;
-        margin-bottom: 15px;
-        color: #555;
-      }
-      .auth-section {
-        margin-bottom: 30px;
-        padding: 20px;
-        background: #f9f9f9;
-        border-radius: 6px;
-      }
-      .form-group {
-        margin-bottom: 15px;
-      }
-      label {
-        display: block;
-        margin-bottom: 5px;
-        color: #555;
-        font-weight: 500;
-      }
-      input {
-        width: 100%;
-        padding: 10px;
-        border: 1px solid #ddd;
-        border-radius: 4px;
-        font-size: 14px;
-      }
-      input:focus {
-        outline: none;
-        border-color: #4CAF50;
-      }
-      select {
-        width: 100%;
-        padding: 10px;
-        border: 1px solid #ddd;
-        border-radius: 4px;
-        font-size: 14px;
-        background: white;
-        cursor: pointer;
-      }
-      select:focus {
-        outline: none;
-        border-color: #4CAF50;
-      }
-      button {
-        padding: 10px 20px;
-        background: #4CAF50;
-        color: white;
-        border: none;
-        border-radius: 4px;
-        cursor: pointer;
-        font-size: 14px;
-        margin-right: 10px;
-        margin-top: 5px;
-      }
-      button:hover {
-        background: #45a049;
-      }
-      button.secondary {
-        background: #2196F3;
-      }
-      button.secondary:hover {
-        background: #0b7dda;
-      }
-      button.danger {
-        background: #f44336;
-      }
-      button.danger:hover {
-        background: #da190b;
-      }
-      .message {
-        padding: 10px;
-        margin: 10px 0;
-        border-radius: 4px;
-        display: none;
-      }
-      .message.success {
-        background: #d4edda;
-        color: #155724;
-        border: 1px solid #c3e6cb;
-        display: block;
-      }
-      .message.error {
-        background: #f8d7da;
-        color: #721c24;
-        border: 1px solid #f5c6cb;
-        display: block;
-      }
-      .user-info {
-        padding: 10px;
-        background: #e3f2fd;
-        border-radius: 4px;
-        margin-bottom: 15px;
-      }
-      .hidden {
-        display: none;
-      }
-      ul {
-        list-style: none;
-        padding: 0;
-      }
-      li {
-        padding: 10px;
-        background: #f9f9f9;
-        margin-bottom: 5px;
-        border-radius: 4px;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-      }
-      .item-form {
-        margin-bottom: 20px;
-        padding: 15px;
-        background: #f9f9f9;
-        border-radius: 6px;
-      }
-      pre {
-        background: #f5f5f5;
-        padding: 10px;
-        border-radius: 4px;
-        overflow-x: auto;
-      }
-      /* Master Password Modal */
-      .modal {
-        display: none;
-        position: fixed;
-        z-index: 1000;
-        left: 0;
-        top: 0;
-        width: 100%;
-        height: 100%;
-        background-color: rgba(0,0,0,0.5);
-      }
-      .modal-content {
-        background-color: white;
-        margin: 15% auto;
-        padding: 30px;
-        border-radius: 8px;
-        width: 90%;
-        max-width: 400px;
-        box-shadow: 0 4px 20px rgba(0,0,0,0.3);
-        position: relative;
-      }
-      .modal-content:hover {
-        cursor: default;
-      }
-      .modal-content h2 {
-        margin-top: 0;
-        margin-bottom: 20px;
-      }
-      .locked-overlay {
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        background-color: rgba(0,0,0,0.9);
-        z-index: 2000;
-        display: none;
-        justify-content: center;
-        align-items: center;
-        flex-direction: column;
-      }
-      .locked-overlay.active {
-        display: flex;
-      }
-      .locked-content {
-        background: white;
-        padding: 40px;
-        border-radius: 8px;
-        text-align: center;
-        max-width: 400px;
-      }
-      .locked-content h2 {
-        margin-top: 0;
-        color: #333;
-      }
-      .password-display {
-        font-family: monospace;
-        background: #f5f5f5;
-        padding: 8px;
-        border-radius: 4px;
-        margin: 5px 0;
-        word-break: break-all;
-      }
-      .password-toggle {
-        cursor: pointer;
-        color: #2196F3;
-        font-size: 12px;
-        margin-left: 10px;
-      }
-      .password-toggle:hover {
-        text-decoration: underline;
-      }
-      /* Improved Password Item Styles */
-      .password-item {
-        background: white;
-        border: 1px solid #e0e0e0;
-        border-radius: 8px;
-        margin-bottom: 12px;
-        overflow: hidden;
-        transition: box-shadow 0.2s;
-      }
-      .password-item:hover {
-        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-      }
-      .password-item-header {
-        padding: 15px;
-        cursor: pointer;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        background: #fafafa;
-        border-bottom: 1px solid #e0e0e0;
-      }
-      .password-item-header:hover {
-        background: #f5f5f5;
-      }
-      .password-item-header.expanded {
-        border-bottom: 2px solid #4CAF50;
-      }
-      .password-item-title {
-        font-weight: 600;
-        font-size: 16px;
-        color: #333;
-        display: flex;
-        align-items: center;
-        gap: 10px;
-      }
-      .password-item-title::before {
-        content: '▶';
-        font-size: 12px;
-        transition: transform 0.2s;
-        color: #999;
-      }
-      .password-item-header.expanded .password-item-title::before {
-        transform: rotate(90deg);
-      }
-      .password-item-details {
-        padding: 0 15px;
-        max-height: 0;
-        overflow: hidden;
-        transition: max-height 0.3s ease-out, padding 0.3s ease-out;
-      }
-      .password-item-details.expanded {
-        max-height: 500px;
-        padding: 15px;
-      }
-      .password-field {
-        margin-bottom: 15px;
-      }
-      .password-field-label {
-        font-size: 12px;
-        color: #666;
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-        margin-bottom: 5px;
-        font-weight: 600;
-      }
-      .password-field-value {
-        font-size: 14px;
-        color: #333;
-        word-break: break-all;
-        padding: 8px;
-        background: #f9f9f9;
-        border-radius: 4px;
-        font-family: monospace;
-      }
-      .password-field-value.password-hidden {
-        font-family: monospace;
-        letter-spacing: 2px;
-      }
-      .password-actions {
-        display: flex;
-        gap: 8px;
-        margin-top: 10px;
-        flex-wrap: wrap;
-      }
-      .btn-small {
-        padding: 6px 12px;
-        font-size: 12px;
-        margin: 0;
-      }
-      .btn-copy {
-        background: #2196F3;
-        color: white;
-      }
-      .btn-copy:hover {
-        background: #0b7dda;
-      }
-      .btn-show {
-        background: #9C27B0;
-        color: white;
-      }
-      .btn-show:hover {
-        background: #7b1fa2;
-      }
-      textarea {
-        width: 100%;
-        padding: 10px;
-        border: 1px solid #ddd;
-        border-radius: 4px;
-        font-size: 14px;
-        font-family: inherit;
-        resize: vertical;
-        min-height: 60px;
-      }
-      textarea:focus {
-        outline: none;
-        border-color: #4CAF50;
-      }
-      .form-actions {
-        display: flex;
-        gap: 10px;
-        margin-top: 15px;
-      }
-      .copy-feedback {
-        position: fixed;
-        top: 20px;
-        right: 20px;
-        background: #4CAF50;
-        color: white;
-        padding: 12px 20px;
-        border-radius: 6px;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-        z-index: 3000;
-        display: none;
-        animation: slideIn 0.3s ease-out;
-      }
-      .copy-feedback.show {
-        display: block;
-      }
-      @keyframes slideIn {
-        from {
-          transform: translateX(100%);
-          opacity: 0;
-        }
-        to {
-          transform: translateX(0);
-          opacity: 1;
-        }
-      }
-      .empty-state {
-        text-align: center;
-        padding: 40px 20px;
-        color: #999;
-      }
-      .empty-state-icon {
-        font-size: 48px;
-        margin-bottom: 10px;
-      }
-      /* Password Strength Meter */
-      .strength-very-weak { background: #f44336 !important; }
-      .strength-weak { background: #ff9800 !important; }
-      .strength-fair { background: #ffc107 !important; }
-      .strength-good { background: #8bc34a !important; }
-      .strength-strong { background: #4caf50 !important; }
-      .strength-text-very-weak { color: #f44336 !important; }
-      .strength-text-weak { color: #ff9800 !important; }
-      .strength-text-fair { color: #ffc107 !important; }
-      .strength-text-good { color: #8bc34a !important; }
-      .strength-text-strong { color: #4caf50 !important; }
-    </style>
+    <title>Secure Vault</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
     <!-- zxcvbn for password strength checking -->
     <script src="https://cdn.jsdelivr.net/npm/zxcvbn@4.4.2/dist/zxcvbn.js"></script>
     <script src="clipboardManager.js"></script>
   </head>
   <body>
     <div class="container">
-      <h1>🔒 Secure App</h1>
+      <button class="theme-toggle" onclick="toggleTheme()" title="Toggle Dark Mode">
+        <span id="themeIcon">🌙</span>
+      </button>
+      <div class="app-header">
+        <h1>🔒 Secure Vault</h1>
+      </div>
 
       <!-- Authentication Section -->
-      <div class="auth-section" id="authSection">
-        <h2>Authentication</h2>
+      <div class="auth-container" id="authSection">
+        <div class="auth-card">
+          <h2>Authentication</h2>
         <div id="authMessage" class="message"></div>
         
         <!-- Login Form -->
@@ -432,13 +56,14 @@
           <button onclick="register()">Register</button>
           <button class="secondary" onclick="showLogin()">Switch to Login</button>
         </div>
+        </div>
       </div>
 
       <!-- Master Password Modal -->
       <div id="masterPasswordModal" class="modal">
         <div class="modal-content">
           <h2>🔐 Enter Master Password</h2>
-          <p style="margin-bottom: 20px; color: #666;">Your master password is used to encrypt and decrypt your entries. It is never saved and only stored in memory for this session.</p>
+          <p>Your master password is used to encrypt and decrypt your entries. It is never saved and only stored in memory for this session.</p>
           <div class="form-group">
             <label for="masterPasswordInput">Master Password:</label>
             <input type="password" id="masterPasswordInput" placeholder="Enter master password" autofocus 
@@ -457,7 +82,7 @@
       <div id="lockedOverlay" class="locked-overlay">
         <div class="locked-content">
           <h2>🔒 Application Locked</h2>
-          <p style="margin-bottom: 20px; color: #666;">The application has been locked due to inactivity. Please enter your master password to continue.</p>
+          <p>The application has been locked due to inactivity. Please enter your master password to continue.</p>
           <div class="form-group">
             <label for="unlockPasswordInput">Master Password:</label>
             <input type="password" id="unlockPasswordInput" placeholder="Enter master password" autofocus 
@@ -570,14 +195,14 @@
                 🎲 Generate
               </button>
             </div>
-            <div id="passwordStrengthMeter" style="margin-top: 8px; display: none;">
+            <div id="passwordStrengthMeter" class="strength-meter">
               <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 5px;">
-                <div id="strengthBar" style="flex: 1; height: 6px; background: #e0e0e0; border-radius: 3px; overflow: hidden;">
-                  <div id="strengthBarFill" style="height: 100%; width: 0%; transition: all 0.3s; border-radius: 3px;"></div>
+                <div id="strengthBar" class="strength-bar" style="flex: 1;">
+                  <div id="strengthBarFill" class="strength-bar-fill"></div>
                 </div>
-                <span id="strengthText" style="font-size: 12px; font-weight: 600; min-width: 80px; text-align: right;"></span>
+                <span id="strengthText" class="strength-text"></span>
               </div>
-              <div id="strengthFeedback" style="font-size: 11px; color: #666; margin-top: 4px;"></div>
+              <div id="strengthFeedback" class="strength-feedback"></div>
             </div>
           </div>
           <div class="form-group">
@@ -609,7 +234,7 @@
     </div>
 
     <script>
-      const API_BASE = 'http://localhost:3000/api';
+      const API_BASE = 'http://192.168.2.246:3000/api';
 
       // Master password stored in memory (never saved to localStorage)
       let masterPassword = null;
@@ -774,7 +399,7 @@
       }
 
       // Make authenticated request
-      function authFetch(url, options = {}) {
+      async function authFetch(url, options = {}) {
         const token = getAuthToken();
         const headers = {
           'Content-Type': 'application/json',
@@ -783,10 +408,18 @@
         if (token) {
           headers['Authorization'] = `Bearer ${token}`;
         }
-        return fetch(url, {
+        const response = await fetch(url, {
           ...options,
           headers
         });
+
+        if (response.status === 429) {
+          const data = await response.json();
+          console.log(data);
+          throw new Error(data.error || 'Too many requests. Please try again later.');
+        }
+
+        return response;
       }
 
       // Show message
@@ -861,6 +494,8 @@
             showMessage('Login successful!', 'success');
             showAuthenticated(data.user);
             // Master password modal will be shown by showAuthenticated
+          } else if (response.status === 429) {
+            showMessage(data.error || 'Too many failed attempts. Please try again later.', 'error');
           } else {
             showMessage(data.error || 'Login failed', 'error');
           }
@@ -1587,9 +1222,36 @@
         setTimeout(() => {
           passwordInput.type = 'password';
         }, 3000);
-
-        resetInactivityTimer();
       }
+
+      // Theme toggler
+      function toggleTheme() {
+          const themes = ["light", "dark", "cyan", "forest", "premium"];
+          const current = document.body.getAttribute("data-theme") || "light";
+          const next = themes[(themes.indexOf(current) + 1) % themes.length];
+          document.body.setAttribute("data-theme", next);
+          localStorage.setItem("theme", next);
+          updateThemeIcon(next);
+      }
+
+      function updateThemeIcon(theme) {
+          const icon = document.getElementById("themeIcon");
+          const map = {
+              light: "🌙",
+              dark: "☀️",
+              cyan: "💠",
+              forest: "🌿",
+              premium: "💎"
+          };
+          icon.textContent = map[theme] || "🌙";
+      }
+
+      // Initialize theme
+      const savedTheme = localStorage.getItem('theme') || 'light';
+      document.body.setAttribute('data-theme', savedTheme);
+      updateThemeIcon(savedTheme);
+
+
 
       // Add item
       async function addItem() {

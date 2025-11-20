@@ -7,6 +7,7 @@ const { sanitizeObject } = require('../utils/security');
 const { globalSessionManager } = require('../utils/sessionManager');
 const { logAudit } = require('../utils/audit');
 const authenticateToken = require('../middleware/auth');
+const { checkLoginRateLimit, recordLoginFailure, resetLoginFailure } = require('../middleware/loginRateLimit');
 
 const router = express.Router();
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
@@ -74,7 +75,7 @@ router.post('/register', async (req, res) => {
 });
 
 // Login endpoint
-router.post('/login', async (req, res) => {
+router.post('/login', checkLoginRateLimit, async (req, res) => {
     try {
         const { username, password } = req.body;
 
@@ -110,6 +111,16 @@ router.post('/login', async (req, res) => {
                 ipAddress: req.ip || req.connection.remoteAddress,
                 details: { reason: 'Invalid password' }
             });
+
+            // Record rate limit failure
+            const isLockedOut = recordLoginFailure(req, res);
+            if (isLockedOut) {
+                return res.status(429).json({ 
+                    error: 'Too many failed attempts. Please try again in 30 seconds.',
+                    retryAfter: 30
+                });
+            }
+
             return res.status(401).json({ error: 'Invalid username or password' });
         }
 
@@ -147,6 +158,9 @@ router.post('/login', async (req, res) => {
             ipAddress: req.ip || req.connection.remoteAddress,
             userAgent: req.headers['user-agent']
         });
+
+        // Reset rate limit on successful login
+        resetLoginFailure(req);
 
         res.json({
             message: 'Login successful',
