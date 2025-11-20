@@ -78,8 +78,31 @@ if [ $# -gt 0 ]; then
         "unit"|"encryption-unit"|"test-encryption-unit")
             run_test "test-encryption-unit.js" "Encryption Unit Tests"
             ;;
+        "--unit"|"-u")
+            # Run unit group
+            run_test "test-encryption-unit.js" "Encryption Unit Tests" || true
+            run_test "test-vaults-db.js" "Vault Database Unit Tests" || true
+            run_test "test-password-strength.js" "Password Strength Calculator Tests" || true
+            run_test "test-password-generation.js" "Password Generation Tests" || true
+            exit 0
+            ;;
         "api"|"test-api")
             run_test "test-api.js" "API Integration Tests"
+            ;;
+        "integration"|"--integration"|"-i")
+            # Run integration group
+            # Ensure server is running
+            if ! curl -s http://localhost:3000/api/ping > /dev/null 2>&1; then
+                echo -e "${RED}❌ Server is not running on port 3000${NC}"
+                exit 1
+            fi
+            run_test "test-api.js" "API Integration Tests" || true
+            run_test "test-encryption.js" "Encryption Integration Tests" || true
+            run_test "test-vaults.js" "Vault Integration Tests" || true
+            run_test "test-master-password.js" "Master Password Flow Tests" || true
+            run_test "test-password-ui.js" "Password UI Features Tests" || true
+            run_test "test-shared-vaults.js" "Shared Vaults Tests" || true
+            exit 0
             ;;
         "encryption"|"test-encryption")
             run_test "test-encryption.js" "Encryption Integration Tests"
@@ -108,6 +131,17 @@ if [ $# -gt 0 ]; then
         "security-bugs"|"test-security-bugs"|"security")
             run_test "test-security-bugs.js" "Security Bugs Tests"
             ;;
+        "security"|"--security"|"-s"|"test-security")
+            # Run security-focused tests
+            # Start server if required by tests
+            if ! curl -s http://localhost:3000/api/ping > /dev/null 2>&1; then
+                echo -e "${YELLOW}⚠️  Server not running; some security tests may require the server${NC}"
+            fi
+            run_test "test-input-validation.js" "Input Validation Tests" || true
+            run_test "test-injection-attacks.js" "Injection Attack Tests" || true
+            run_test "test-security-bugs.js" "Security Bugs Tests" || true
+            exit 0
+            ;;
         "all")
             # Run all tests (fall through to default behavior)
             ;;
@@ -127,6 +161,9 @@ if [ $# -gt 0 ]; then
             echo "  shared-vaults, shared   - Shared vaults tests (server required)"
             echo "  security-bugs, security - Security bugs tests (server required)"
             echo "  all                     - Run all tests"
+            echo "  --unit, -u             - Run unit test group"
+            echo "  --integration, -i      - Run integration test group"
+            echo "  --security, -s         - Run security test group"
             exit 1
             ;;
     esac
@@ -174,11 +211,6 @@ else
     ((FAILED++))
 fi
 
-if run_test "test-security-bugs.js" "Security Bugs Tests"; then
-    ((PASSED++))
-else
-    ((FAILED++))
-fi
 
 # 2. Integration tests (server required)
 echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
@@ -229,6 +261,30 @@ else
 fi
 
 if run_test "test-shared-vaults.js" "Shared Vaults Tests"; then
+    ((PASSED++))
+else
+    ((FAILED++))
+fi
+
+# 3. Security tests
+echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "${YELLOW}Security Tests (May require server)${NC}"
+echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo ""
+
+if run_test "test-input-validation.js" "Input Validation Tests"; then
+    ((PASSED++))
+else
+    ((FAILED++))
+fi
+
+if run_test "test-injection-attacks.js" "Injection Attack Tests"; then
+    ((PASSED++))
+else
+    ((FAILED++))
+fi
+
+if run_test "test-security-bugs.js" "Security Bugs Tests"; then
     ((PASSED++))
 else
     ((FAILED++))
