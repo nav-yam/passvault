@@ -116,7 +116,11 @@ async function runTests() {
             if (vaultRes.status === 200 && vaultRes.data.id) {
                 vaultId = vaultRes.data.id;
                 return true;
+            } else {
+                console.log('Setup Failed: Create vault failed', vaultRes.status, vaultRes.data);
             }
+        } else {
+            console.log('Setup Failed: Get CSRF failed', res.status, res.headers);
         }
         return false;
     }) ? passed++ : failed++;
@@ -514,8 +518,15 @@ async function runTests() {
                     const rawResponse = itemsRes.raw;
                     // The response should contain encoded entities if they exist
                     return true; // If we got here, validation passed
+                } else {
+                    console.log('Test 10 Failed: Item not found in response');
+                    console.log('Items:', JSON.stringify(itemsRes.data, null, 2));
                 }
+            } else {
+                console.log('Test 10 Failed: GET items failed', itemsRes.status, itemsRes.data);
             }
+        } else {
+            console.log('Test 10 Failed: Create item failed', createRes.status, createRes.data);
         }
         return false;
     }) ? passed++ : failed++;

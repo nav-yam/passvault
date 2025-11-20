@@ -5,6 +5,7 @@ const authRoutes = require('./routes/auth');
 const authenticateToken = require('./middleware/auth');
 const checkVaultAccess = require('./middleware/vaultAccess');
 const { createRateLimiter, recordFailedAttempt, resetFailedAttempts } = require('./middleware/rateLimit');
+const { getCsrfToken } = require('./middleware/csrf');
 const { encrypt, decrypt, encryptWithKey, decryptWithKey, generateVaultKey } = require('./utils/encryption');
 const { sanitizeObject } = require('./utils/security');
 
@@ -87,7 +88,7 @@ function isSharedVault(vaultId) {
     return memberCount.count > 0;
 }
 
-app.get('/api/vaults', authenticateToken, (req, res) => {
+app.get('/api/vaults', authenticateToken, getCsrfToken, (req, res) => {
     try {
         const owned = db.prepare('SELECT id, name, created_at, user_id as owner_id FROM vaults WHERE user_id = ?').all(req.user.userId);
         const shared = db.prepare(`
