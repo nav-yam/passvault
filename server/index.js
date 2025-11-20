@@ -564,6 +564,27 @@ app.delete('/api/items/:id', authenticateToken, (req, res) => {
     }
 });
 
+const fs = require('fs');
+const crypto = require('crypto');
+
+function checkIntegrity() {
+    const dbPath = './db/app.db';
+    if (fs.existsSync(dbPath)) {
+        try {
+            const fileBuffer = fs.readFileSync(dbPath);
+            const hashSum = crypto.createHash('sha256');
+            hashSum.update(fileBuffer);
+            const hex = hashSum.digest('hex');
+            console.log(`🛡️  Database Integrity Check: SHA-256 hash of ${dbPath} is ${hex}`);
+        } catch (error) {
+            console.error('❌ Integrity check failed:', error);
+        }
+    } else {
+        console.warn('⚠️  Database file not found for integrity check');
+    }
+}
+
 app.listen(3000, '0.0.0.0', () => {
     console.log('🚀 Server running at http://localhost:3000');
+    checkIntegrity();
 });

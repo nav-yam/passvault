@@ -9,6 +9,7 @@ const SALT_LENGTH = 32; // 32 bytes for salt
 const IV_LENGTH = 12; // 12 bytes for GCM IV (96 bits recommended)
 const TAG_LENGTH = 16; // 16 bytes for GCM authentication tag
 const ALGORITHM = 'aes-256-gcm';
+const PEPPER = process.env.PEPPER || 'default-pepper-change-in-production-and-keep-secret';
 
 // Argon2id configuration (OWASP recommended parameters)
 const ARGON2_OPTIONS = {
@@ -18,6 +19,36 @@ const ARGON2_OPTIONS = {
     parallelism: 4,    // 4 threads
     hashLength: KEY_LENGTH
 };
+
+/**
+ * Hashes a password using Argon2id with Salt and Pepper
+ * @param {string} password - The password to hash
+ * @returns {Promise<string>} - The hashed password
+ */
+async function hashPassword(password) {
+    try {
+        // Append pepper to password before hashing
+        const passwordWithPepper = password + PEPPER;
+        return await argon2.hash(passwordWithPepper, ARGON2_OPTIONS);
+    } catch (error) {
+        throw new Error('Password hashing failed: ' + error.message);
+    }
+}
+
+/**
+ * Verifies a password against a hash using Argon2id and Pepper
+ * @param {string} password - The password to verify
+ * @param {string} hash - The stored hash
+ * @returns {Promise<boolean>} - True if password matches
+ */
+async function verifyPassword(password, hash) {
+    try {
+        const passwordWithPepper = password + PEPPER;
+        return await argon2.verify(hash, passwordWithPepper);
+    } catch (error) {
+        return false;
+    }
+}
 
 /**
  * Derives an encryption key from a master password and salt using PBKDF2 (legacy)
@@ -247,6 +278,8 @@ module.exports = {
     generateVaultKey,
     deriveKey,
     deriveKeyArgon2,
-    deriveKeyArgon2Sync
+    deriveKeyArgon2Sync,
+    hashPassword,
+    verifyPassword
 };
 

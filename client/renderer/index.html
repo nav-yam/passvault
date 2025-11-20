@@ -392,6 +392,7 @@
     </style>
     <!-- zxcvbn for password strength checking -->
     <script src="https://cdn.jsdelivr.net/npm/zxcvbn@4.4.2/dist/zxcvbn.js"></script>
+    <script src="clipboardManager.js"></script>
   </head>
   <body>
     <div class="container">
@@ -613,7 +614,7 @@
       // Master password stored in memory (never saved to localStorage)
       let masterPassword = null;
       let inactivityTimer = null;
-      const INACTIVITY_TIMEOUT = 5 * 60 * 1000; // 5 minutes in milliseconds
+      const INACTIVITY_TIMEOUT = 30 * 1000; // 30 seconds
       let isLocked = false;
 
       // Close modals when clicking outside
@@ -1374,23 +1375,17 @@
         if (!password) return;
         
         try {
-          // Use modern clipboard API
-          if (navigator.clipboard && navigator.clipboard.writeText) {
-            await navigator.clipboard.writeText(password);
+          // Use secure clipboard manager with auto-clear
+          if (window.clipboardManager) {
+            await window.clipboardManager.copyWithAutoClear(password);
           } else {
-            // Fallback for older browsers
-            const textArea = document.createElement('textarea');
-            textArea.value = password;
-            textArea.style.position = 'fixed';
-            textArea.style.opacity = '0';
-            document.body.appendChild(textArea);
-            textArea.select();
-            document.execCommand('copy');
-            document.body.removeChild(textArea);
+            // Fallback if manager not loaded (shouldn't happen)
+            await navigator.clipboard.writeText(password);
           }
           
           // Show feedback
           const feedback = document.getElementById('copyFeedback');
+          feedback.textContent = '✓ Copied! Will clear in 30s';
           feedback.classList.add('show');
           setTimeout(() => {
             feedback.classList.remove('show');
@@ -1555,19 +1550,32 @@
         if (includeSpecial) charset += special;
 
         // Ensure at least one character from each category
-        let password = '';
-        if (includeLowercase) password += lowercase[Math.floor(Math.random() * lowercase.length)];
-        if (includeUppercase) password += uppercase[Math.floor(Math.random() * uppercase.length)];
-        if (includeNumbers) password += numbers[Math.floor(Math.random() * numbers.length)];
-        if (includeSpecial) password += special[Math.floor(Math.random() * special.length)];
+        let passwordChars = [];
+        if (includeLowercase) passwordChars.push(lowercase[Math.floor(Math.random() * lowercase.length)]);
+        if (includeUppercase) passwordChars.push(uppercase[Math.floor(Math.random() * uppercase.length)]);
+        if (includeNumbers) passwordChars.push(numbers[Math.floor(Math.random() * numbers.length)]);
+        if (includeSpecial) passwordChars.push(special[Math.floor(Math.random() * special.length)]);
 
-        // Fill the rest randomly
-        for (let i = password.length; i < length; i++) {
-          password += charset[Math.floor(Math.random() * charset.length)];
+        // Fill the rest randomly using crypto.getRandomValues
+        const remainingLength = length - passwordChars.length;
+        const randomValues = new Uint32Array(remainingLength);
+        window.crypto.getRandomValues(randomValues);
+        
+        for (let i = 0; i < remainingLength; i++) {
+          passwordChars.push(charset[randomValues[i] % charset.length]);
         }
 
-        // Shuffle the password
-        password = password.split('').sort(() => Math.random() - 0.5).join('');
+        // Shuffle the password using crypto
+        const shuffleValues = new Uint32Array(passwordChars.length);
+        window.crypto.getRandomValues(shuffleValues);
+        
+        // Fisher-Yates shuffle
+        for (let i = passwordChars.length - 1; i > 0; i--) {
+          const j = shuffleValues[i] % (i + 1);
+          [passwordChars[i], passwordChars[j]] = [passwordChars[j], passwordChars[i]];
+        }
+        
+        let password = passwordChars.join('');
 
         // Set password and trigger strength check
         const passwordInput = document.getElementById('itemPassword');

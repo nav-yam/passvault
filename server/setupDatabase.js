@@ -39,6 +39,16 @@ CREATE TABLE IF NOT EXISTS items (
     FOREIGN KEY (user_id) REFERENCES users(id),
     FOREIGN KEY (vault_id) REFERENCES vaults(id) ON DELETE CASCADE
 );
+
+CREATE TABLE IF NOT EXISTS audit_logs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER,
+    action TEXT NOT NULL,
+    ip_address TEXT,
+    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+    encrypted_details TEXT,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+);
 `);
 
 // Migrate existing tables: add encryption_salt to users if it doesn't exist

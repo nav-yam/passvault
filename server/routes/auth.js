@@ -2,9 +2,10 @@ const express = require('express');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const db = require('better-sqlite3')('./db/app.db');
-const { generateSalt } = require('../utils/encryption');
+const { generateSalt, hashPassword, verifyPassword } = require('../utils/encryption');
 const { sanitizeObject } = require('../utils/security');
 const { globalSessionManager } = require('../utils/sessionManager');
+const { logAudit } = require('../utils/audit');
 const authenticateToken = require('../middleware/auth');
 
 const router = express.Router();
@@ -32,8 +33,8 @@ router.post('/register', async (req, res) => {
         }
 
         // Hash password
-        const saltRounds = 10;
-        const password_hash = await bcrypt.hash(password, saltRounds);
+        // Hash password using Argon2id + Pepper
+        const password_hash = await hashPassword(password);
 
         // Generate encryption salt for password encryption
         const encryptionSalt = generateSalt();
@@ -89,16 +90,45 @@ router.post('/login', async (req, res) => {
         }
 
         // Verify password
-        const isValidPassword = await bcrypt.compare(password, user.password_hash);
+        let isValidPassword = false;
+        let isLegacyHash = false;
+
+        if (user.password_hash.startsWith('$2b$') || user.password_hash.startsWith('$2a$')) {
+            // Legacy bcrypt hash
+            isValidPassword = await bcrypt.compare(password, user.password_hash);
+            isLegacyHash = true;
+        } else {
+            // Argon2id + Pepper
+            isValidPassword = await verifyPassword(password, user.password_hash);
+        }
+
         if (!isValidPassword) {
+            // Log failed login attempt
+            logAudit({
+                userId: user.id,
+                action: 'LOGIN_FAILED',
+                ipAddress: req.ip || req.connection.remoteAddress,
+                details: { reason: 'Invalid password' }
+            });
             return res.status(401).json({ error: 'Invalid username or password' });
         }
 
-        // Migrate PBKDF2 users to Argon2 on successful login
-        if (!user.key_derivation_algo || user.key_derivation_algo === 'pbkdf2') {
+        // Migrate legacy users to Argon2id + Pepper on successful login
+        if (isLegacyHash || !user.key_derivation_algo || user.key_derivation_algo === 'pbkdf2') {
             try {
-                db.prepare('UPDATE users SET key_derivation_algo = ? WHERE id = ?').run('argon2', user.id);
-                console.log(`Migrated user ${user.username} from PBKDF2 to Argon2`);
+                // Re-hash password with Argon2id + Pepper if it was legacy bcrypt
+                if (isLegacyHash) {
+                    const newHash = await hashPassword(password);
+                    db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(newHash, user.id);
+                    console.log(`Migrated user ${user.username} password to Argon2id+Pepper`);
+                }
+                
+                // Also update key_derivation_algo flag if needed (though this flag is for vault key derivation, not password hash)
+                // But we can keep it consistent.
+                if (user.key_derivation_algo !== 'argon2') {
+                    db.prepare('UPDATE users SET key_derivation_algo = ? WHERE id = ?').run('argon2', user.id);
+                    console.log(`Migrated user ${user.username} key derivation algo flag to Argon2`);
+                }
             } catch (error) {
                 console.error('Failed to migrate user to Argon2:', error);
                 // Continue anyway - not critical

@@ -267,6 +267,9 @@ if [ $# -gt 0 ]; then
         "advanced-security"|"test-security-advanced")
             run_test "test-security-advanced.js" "Advanced Security Tests"
             ;;
+        "security-hardening"|"hardening")
+            run_test "test-security-hardening.js" "Security Hardening Tests"
+            ;;
         "all")
             # Run all tests (fall through to default behavior)
             ;;
