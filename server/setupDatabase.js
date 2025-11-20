@@ -5,7 +5,8 @@ CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     username TEXT UNIQUE NOT NULL,
     password_hash TEXT NOT NULL,
-    encryption_salt TEXT
+    encryption_salt TEXT,
+    key_derivation_algo TEXT DEFAULT 'pbkdf2'
 );
 
 CREATE TABLE IF NOT EXISTS vaults (
@@ -44,6 +45,14 @@ CREATE TABLE IF NOT EXISTS items (
 try {
     db.exec(`ALTER TABLE users ADD COLUMN encryption_salt TEXT;`);
     console.log("✅ Added encryption_salt column to users table");
+} catch (e) {
+    // Column already exists, ignore
+}
+
+// Migrate existing tables: add key_derivation_algo to users if it doesn't exist
+try {
+    db.exec(`ALTER TABLE users ADD COLUMN key_derivation_algo TEXT DEFAULT 'pbkdf2';`);
+    console.log("✅ Added key_derivation_algo column to users table");
 } catch (e) {
     // Column already exists, ignore
 }

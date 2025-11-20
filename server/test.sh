@@ -125,6 +125,12 @@ if [ $# -gt 0 ]; then
                 ((FAILED++))
             fi
 
+            if run_test "test-security-advanced.js" "Advanced Security Tests"; then
+                ((PASSED++))
+            else
+                ((FAILED++))
+            fi
+
             print_summary
             if [ $FAILED -eq 0 ]; then
                 exit 0
@@ -227,6 +233,12 @@ if [ $# -gt 0 ]; then
                 echo -e "${YELLOW}⚠️  Server not running; some security tests may require the server${NC}"
             fi
 
+            if run_test "test-security-advanced.js" "Advanced Security Tests"; then
+                ((PASSED++))
+            else
+                ((FAILED++))
+            fi
+
             if run_test "test-input-validation.js" "Input Validation Tests"; then
                 ((PASSED++))
             else
@@ -252,6 +264,9 @@ if [ $# -gt 0 ]; then
                 exit 1
             fi
             ;;
+        "advanced-security"|"test-security-advanced")
+            run_test "test-security-advanced.js" "Advanced Security Tests"
+            ;;
         "all")
             # Run all tests (fall through to default behavior)
             ;;
@@ -270,6 +285,7 @@ if [ $# -gt 0 ]; then
             echo "  password-generation, gen - Password generation tests (no server required)"
             echo "  shared-vaults, shared   - Shared vaults tests (server required)"
             echo "  security-bugs, security - Security bugs tests (server required)"
+            echo "  advanced-security       - Advanced security tests (memory, sessions, crypto)"
             echo "  all                     - Run all tests"
             echo "  --unit, -u             - Run unit test group"
             echo "  --integration, -i      - Run integration test group"
@@ -379,6 +395,12 @@ echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━�
 echo -e "${YELLOW}Security Tests (May require server)${NC}"
 echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo ""
+
+if run_test "test-security-advanced.js" "Advanced Security Tests"; then
+    ((PASSED++))
+else
+    ((FAILED++))
+fi
 
 if run_test "test-input-validation.js" "Input Validation Tests"; then
     ((PASSED++))
