@@ -13,6 +13,24 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
+# Global counters for test results
+PASSED=0
+FAILED=0
+
+print_summary() {
+    echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${BLUE}📊 Test Summary${NC}"
+    echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "  ${GREEN}✅ Passed: $PASSED${NC}"
+    echo -e "  ${RED}❌ Failed: $FAILED${NC}"
+    echo ""
+    if [ $FAILED -eq 0 ]; then
+        echo -e "${GREEN}🎉 All tests passed!${NC}"
+    else
+        echo -e "${RED}⚠️  Some tests failed${NC}"
+    fi
+}
+
 # Get the directory where the script is located
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 cd "$SCRIPT_DIR"
@@ -79,30 +97,98 @@ if [ $# -gt 0 ]; then
             run_test "test-encryption-unit.js" "Encryption Unit Tests"
             ;;
         "--unit"|"-u")
-            # Run unit group
-            run_test "test-encryption-unit.js" "Encryption Unit Tests" || true
-            run_test "test-vaults-db.js" "Vault Database Unit Tests" || true
-            run_test "test-password-strength.js" "Password Strength Calculator Tests" || true
-            run_test "test-password-generation.js" "Password Generation Tests" || true
-            exit 0
+            # Run unit test group
+            PASSED=0
+            FAILED=0
+
+            if run_test "test-encryption-unit.js" "Encryption Unit Tests"; then
+                ((PASSED++))
+            else
+                ((FAILED++))
+            fi
+
+            if run_test "test-vaults-db.js" "Vault Database Unit Tests"; then
+                ((PASSED++))
+            else
+                ((FAILED++))
+            fi
+
+            if run_test "test-password-strength.js" "Password Strength Calculator Tests"; then
+                ((PASSED++))
+            else
+                ((FAILED++))
+            fi
+
+            if run_test "test-password-generation.js" "Password Generation Tests"; then
+                ((PASSED++))
+            else
+                ((FAILED++))
+            fi
+
+            print_summary
+            if [ $FAILED -eq 0 ]; then
+                exit 0
+            else
+                exit 1
+            fi
             ;;
         "api"|"test-api")
             run_test "test-api.js" "API Integration Tests"
             ;;
         "integration"|"--integration"|"-i")
-            # Run integration group
+            # Run integration test group
+            PASSED=0
+            FAILED=0
+
             # Ensure server is running
             if ! curl -s http://localhost:3000/api/ping > /dev/null 2>&1; then
                 echo -e "${RED}❌ Server is not running on port 3000${NC}"
+                print_summary
                 exit 1
             fi
-            run_test "test-api.js" "API Integration Tests" || true
-            run_test "test-encryption.js" "Encryption Integration Tests" || true
-            run_test "test-vaults.js" "Vault Integration Tests" || true
-            run_test "test-master-password.js" "Master Password Flow Tests" || true
-            run_test "test-password-ui.js" "Password UI Features Tests" || true
-            run_test "test-shared-vaults.js" "Shared Vaults Tests" || true
-            exit 0
+
+            if run_test "test-api.js" "API Integration Tests"; then
+                ((PASSED++))
+            else
+                ((FAILED++))
+            fi
+
+            if run_test "test-encryption.js" "Encryption Integration Tests"; then
+                ((PASSED++))
+            else
+                ((FAILED++))
+            fi
+
+            if run_test "test-vaults.js" "Vault Integration Tests"; then
+                ((PASSED++))
+            else
+                ((FAILED++))
+            fi
+
+            if run_test "test-master-password.js" "Master Password Flow Tests"; then
+                ((PASSED++))
+            else
+                ((FAILED++))
+            fi
+
+            if run_test "test-password-ui.js" "Password UI Features Tests"; then
+                ((PASSED++))
+            else
+                ((FAILED++))
+            fi
+
+            if run_test "test-shared-vaults.js" "Shared Vaults Tests"; then
+                ((PASSED++))
+            else
+                ((FAILED++))
+            fi
+
+            print_summary
+            if [ $FAILED -eq 0 ]; then
+                exit 0
+            else
+                exit 1
+            fi
             ;;
         "encryption"|"test-encryption")
             run_test "test-encryption.js" "Encryption Integration Tests"
@@ -128,19 +214,43 @@ if [ $# -gt 0 ]; then
         "shared-vaults"|"test-shared-vaults"|"shared")
             run_test "test-shared-vaults.js" "Shared Vaults Tests"
             ;;
-        "security-bugs"|"test-security-bugs"|"security")
+        "security-bugs"|"test-security-bugs")
             run_test "test-security-bugs.js" "Security Bugs Tests"
             ;;
         "security"|"--security"|"-s"|"test-security")
-            # Run security-focused tests
+            # Run security-focused test group
+            PASSED=0
+            FAILED=0
+
             # Start server if required by tests
             if ! curl -s http://localhost:3000/api/ping > /dev/null 2>&1; then
                 echo -e "${YELLOW}⚠️  Server not running; some security tests may require the server${NC}"
             fi
-            run_test "test-input-validation.js" "Input Validation Tests" || true
-            run_test "test-injection-attacks.js" "Injection Attack Tests" || true
-            run_test "test-security-bugs.js" "Security Bugs Tests" || true
-            exit 0
+
+            if run_test "test-input-validation.js" "Input Validation Tests"; then
+                ((PASSED++))
+            else
+                ((FAILED++))
+            fi
+
+            if run_test "test-injection-attacks.js" "Injection Attack Tests"; then
+                ((PASSED++))
+            else
+                ((FAILED++))
+            fi
+
+            if run_test "test-security-bugs.js" "Security Bugs Tests"; then
+                ((PASSED++))
+            else
+                ((FAILED++))
+            fi
+
+            print_summary
+            if [ $FAILED -eq 0 ]; then
+                exit 0
+            else
+                exit 1
+            fi
             ;;
         "all")
             # Run all tests (fall through to default behavior)
@@ -223,9 +333,7 @@ if ! curl -s http://localhost:3000/api/ping > /dev/null 2>&1; then
     echo -e "${RED}❌ Server is not running on port 3000${NC}"
     echo -e "${YELLOW}💡 Start the server with: ./rerun.sh${NC}"
     echo ""
-    echo -e "${BLUE}Summary:${NC}"
-    echo -e "  ${GREEN}Passed: $PASSED${NC}"
-    echo -e "  ${RED}Failed: $FAILED${NC}"
+    print_summary
     echo -e "  ${YELLOW}Skipped: 6 (server not running)${NC}"
     exit 1
 fi
@@ -291,18 +399,9 @@ else
 fi
 
 # Summary
-echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-echo -e "${BLUE}📊 Test Summary${NC}"
-echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-echo -e "  ${GREEN}✅ Passed: $PASSED${NC}"
-echo -e "  ${RED}❌ Failed: $FAILED${NC}"
-echo ""
-
+print_summary
 if [ $FAILED -eq 0 ]; then
-    echo -e "${GREEN}🎉 All tests passed!${NC}"
     exit 0
 else
-    echo -e "${RED}⚠️  Some tests failed${NC}"
     exit 1
 fi
-

@@ -6,6 +6,7 @@ const authenticateToken = require('./middleware/auth');
 const checkVaultAccess = require('./middleware/vaultAccess');
 const { createRateLimiter, recordFailedAttempt, resetFailedAttempts } = require('./middleware/rateLimit');
 const { encrypt, decrypt, encryptWithKey, decryptWithKey, generateVaultKey } = require('./utils/encryption');
+const { sanitizeObject } = require('./utils/security');
 
 const app = express();
 app.use(cors());
@@ -106,6 +107,7 @@ app.get('/api/vaults', authenticateToken, (req, res) => {
 
 app.post('/api/vaults', authenticateToken, (req, res) => {
     try {
+        req.body = sanitizeObject(req.body, ['masterPassword']);
         const { name, masterPassword } = req.body;
         if (!name) {
             return res.status(400).json({ error: 'Vault name is required' });
@@ -139,6 +141,7 @@ app.post('/api/vaults/:vault_id/members', authenticateToken, checkVaultAccess, c
         }
 
         const vaultId = parseInt(req.params.vault_id);
+        req.body = sanitizeObject(req.body, ['ownerMasterPassword', 'memberMasterPassword']);
         const { username, ownerMasterPassword, memberMasterPassword } = req.body;
         if (!username) {
             return res.status(400).json({ error: 'Username is required' });
@@ -328,6 +331,7 @@ app.get('/api/items', authenticateToken, createRateLimiter('vault_unlock', 3, 30
 
 app.post('/api/items', authenticateToken, createRateLimiter('vault_unlock', 3, 30), (req, res) => {
     try {
+        req.body = sanitizeObject(req.body, ['password', 'masterPassword']);
         const { name, description, password, masterPassword, vault_id } = req.body;
         if (!name) {
             return res.status(400).json({ error: 'Name is required' });
@@ -416,6 +420,7 @@ app.post('/api/items', authenticateToken, createRateLimiter('vault_unlock', 3, 3
 
 app.put('/api/items/:id', authenticateToken, createRateLimiter('vault_unlock', 3, 30), (req, res) => {
     try {
+        req.body = sanitizeObject(req.body, ['password', 'masterPassword']);
         const { name, description, password, masterPassword, vault_id } = req.body;
         const itemId = req.params.id;
 

@@ -3,6 +3,7 @@ const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const db = require('better-sqlite3')('./db/app.db');
 const { generateSalt } = require('../utils/encryption');
+const { sanitizeObject } = require('../utils/security');
 
 const router = express.Router();
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
@@ -10,6 +11,7 @@ const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-producti
 // Register endpoint
 router.post('/register', async (req, res) => {
     try {
+        req.body = sanitizeObject(req.body, ['password']);
         const { username, password } = req.body;
 
         // Validate input
