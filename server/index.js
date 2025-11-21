@@ -92,13 +92,17 @@ app.get('/api/vaults', authenticateToken, getCsrfToken, (req, res) => {
     try {
         const owned = db.prepare('SELECT id, name, created_at, user_id as owner_id FROM vaults WHERE user_id = ?').all(req.user.userId);
         const shared = db.prepare(`
-            SELECT v.id, v.name, v.created_at, v.user_id as owner_id 
+            SELECT v.id, v.name, v.created_at, v.user_id as owner_id, vm.encrypted_vault_key
             FROM vaults v
             INNER JOIN vault_members vm ON v.id = vm.vault_id
             WHERE vm.user_id = ?
         `).all(req.user.userId);
         
-        const allVaults = [...owned, ...shared.map(v => ({ ...v, is_shared: true }))];
+        const allVaults = [...owned, ...shared.map(v => ({ 
+            ...v, 
+            is_shared: true,
+            is_pending: !v.encrypted_vault_key // If no key yet, it's pending accept
+        }))];
         res.json(allVaults);
     } catch (error) {
         console.error('Error fetching vaults:', error);
@@ -172,21 +176,87 @@ app.post('/api/vaults/:vault_id/members', authenticateToken, checkVaultAccess, c
         // Success - reset failed attempts
         resetFailedAttempts(req);
 
-        let memberEncryptedKey = null;
-        if (memberMasterPassword) {
-            // Encrypt vault key with member's master password
-            const memberUser = db.prepare('SELECT encryption_salt FROM users WHERE id = ?').get(targetUser.id);
-            if (memberUser && memberUser.encryption_salt) {
-                const memberSalt = Buffer.from(memberUser.encryption_salt, 'hex');
-                memberEncryptedKey = encrypt(vaultKeyHex, memberMasterPassword, memberSalt);
-            }
-        }
+        // Generate a secure invite code
+        const inviteCode = crypto.randomBytes(16).toString('hex');
+        
+        // Encrypt the vault key with the invite code
+        // We use the invite code as a temporary password/key
+        // Since invite code is random and high entropy, we can use a fixed salt or derive one
+        // For simplicity and security, we'll use a fixed salt for invite codes or just use it as key if length matches
+        // Let's use PBKDF2 with a fixed salt for invites to ensure consistent key derivation
+        const inviteSalt = Buffer.from('invite_salt_shared_vault', 'utf8'); 
+        const encryptedVaultKeyPending = encrypt(vaultKeyHex, inviteCode, inviteSalt);
 
-        const stmt = db.prepare('INSERT INTO vault_members (vault_id, user_id, encrypted_vault_key) VALUES (?, ?, ?)');
-        stmt.run(vaultId, targetUser.id, memberEncryptedKey);
-        res.json({ success: true, message: memberEncryptedKey ? 'Member added successfully.' : 'Member added. They will need to provide their master password when first accessing the vault.' });
+        const stmt = db.prepare('INSERT INTO vault_members (vault_id, user_id, encrypted_vault_key_pending) VALUES (?, ?, ?)');
+        stmt.run(vaultId, targetUser.id, encryptedVaultKeyPending);
+        
+        res.json({ 
+            success: true, 
+            message: 'Member added. Please share this Invite Code with them to unlock access.',
+            inviteCode: inviteCode
+        });
     } catch (error) {
         console.error('Error adding vault member:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+app.post('/api/vaults/:vault_id/accept-invite', authenticateToken, createRateLimiter('vault_unlock', 5, 60), (req, res) => {
+    try {
+        const vaultId = parseInt(req.params.vault_id);
+        const { inviteCode, masterPassword } = req.body;
+
+        if (!inviteCode || !masterPassword) {
+            return res.status(400).json({ error: 'Invite code and master password are required' });
+        }
+
+        const member = db.prepare('SELECT id, encrypted_vault_key_pending FROM vault_members WHERE vault_id = ? AND user_id = ?').get(vaultId, req.user.userId);
+        
+        if (!member) {
+            return res.status(404).json({ error: 'Membership not found' });
+        }
+
+        if (!member.encrypted_vault_key_pending) {
+            return res.status(400).json({ error: 'Invite already accepted or invalid state' });
+        }
+
+        // Try to decrypt the pending key with the invite code
+        const inviteSalt = Buffer.from('invite_salt_shared_vault', 'utf8');
+        let vaultKeyHex;
+        try {
+            vaultKeyHex = decrypt(member.encrypted_vault_key_pending, inviteCode, inviteSalt);
+        } catch (e) {
+            const rateLimitResponse = recordFailedAttempt(req, res);
+            if (rateLimitResponse) return;
+            return res.status(400).json({ error: 'Invalid invite code' });
+        }
+
+        if (!vaultKeyHex) {
+             const rateLimitResponse = recordFailedAttempt(req, res);
+            if (rateLimitResponse) return;
+            return res.status(400).json({ error: 'Invalid invite code' });
+        }
+
+        // Success - reset failed attempts
+        resetFailedAttempts(req);
+
+        // Now encrypt the vault key with the user's master password
+        const user = db.prepare('SELECT encryption_salt FROM users WHERE id = ?').get(req.user.userId);
+        if (!user || !user.encryption_salt) {
+            return res.status(500).json({ error: 'User encryption salt not found' });
+        }
+
+        const salt = Buffer.from(user.encryption_salt, 'hex');
+        const encryptedVaultKey = encrypt(vaultKeyHex, masterPassword, salt);
+
+        // Update member record: set encrypted_vault_key and clear pending
+        const stmt = db.prepare('UPDATE vault_members SET encrypted_vault_key = ?, encrypted_vault_key_pending = NULL WHERE id = ?');
+        stmt.run(encryptedVaultKey, member.id);
+
+        res.json({ success: true, message: 'Invite accepted. You can now access the vault.' });
+
+    } catch (error) {
+        console.error('Error accepting invite:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 });

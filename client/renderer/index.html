@@ -118,6 +118,29 @@
         </div>
       </div>
 
+      <!-- Accept Invite Modal -->
+      <div id="acceptInviteModal" class="modal">
+        <div class="modal-content">
+          <h2>🎟️ Accept Vault Invite</h2>
+          <p>Enter the invite code shared by the vault owner to access this vault.</p>
+          <div class="form-group">
+            <label for="inviteCodeInput">Invite Code:</label>
+            <input type="text" id="inviteCodeInput" placeholder="Enter invite code" autofocus 
+                   onkeypress="if(event.key === 'Enter') acceptInvite()" />
+          </div>
+          <div class="form-group">
+            <label for="acceptInviteMasterPassword">Your Master Password:</label>
+            <input type="password" id="acceptInviteMasterPassword" placeholder="Enter your master password" 
+                   onkeypress="if(event.key === 'Enter') acceptInvite()" />
+          </div>
+          <div id="acceptInviteError" class="message error" style="display: none;"></div>
+          <div class="form-actions">
+            <button onclick="acceptInvite()">Unlock Vault</button>
+            <button class="secondary" onclick="hideAcceptInviteModal()">Cancel</button>
+          </div>
+        </div>
+      </div>
+
       <!-- Manage Vault Modal -->
       <div id="manageVaultModal" class="modal">
         <div class="modal-content" style="max-width: 600px;">
@@ -141,6 +164,18 @@
               </div>
             </div>
             <div id="addMemberError" class="message error" style="display: none;"></div>
+            
+            <!-- Invite Code Display -->
+            <div id="inviteCodeDisplay" class="invite-code-display">
+                <h4>✅ Member Added!</h4>
+                <p>Share this Invite Code with the user so they can unlock the vault:</p>
+                <div class="invite-code-container">
+                    <code id="generatedInviteCode" class="invite-code-value"></code>
+                    <button class="btn-small" onclick="copyInviteCode()">📋 Copy</button>
+                </div>
+                <p class="invite-code-helper">They will need to enter this code when they first access the vault.</p>
+                <button class="secondary btn-small" onclick="document.getElementById('inviteCodeDisplay').style.display='none'" style="margin-top: 10px; width: 100%;">Done</button>
+            </div>
           </div>
 
           <div id="vaultNotOwnedMessage" style="display: none; padding: 15px; background: #fff3cd; border-radius: 4px; color: #856404;">
@@ -244,7 +279,7 @@
 
       // Close modals when clicking outside
       window.onclick = function(event) {
-        const modals = ['masterPasswordModal', 'createVaultModal', 'manageVaultModal'];
+        const modals = ['masterPasswordModal', 'createVaultModal', 'manageVaultModal', 'acceptInviteModal'];
         modals.forEach(modalId => {
           const modal = document.getElementById(modalId);
           if (event.target === modal) {
@@ -566,10 +601,17 @@
             vaults.forEach((vault) => {
               const option = document.createElement('option');
               option.value = vault.id;
-              const displayName = vault.is_shared ? `🔗 ${vault.name} (Shared)` : vault.name;
+              let displayName = vault.name;
+              if (vault.is_shared) {
+                  displayName = `🔗 ${vault.name} (Shared)`;
+              }
+              if (vault.is_pending) {
+                  displayName = `⚠️ ${vault.name} (Pending Invite)`;
+              }
               option.textContent = displayName;
               option.dataset.ownerId = vault.owner_id;
               option.dataset.isShared = vault.is_shared || false;
+              option.dataset.isPending = vault.is_pending || false;
               select.appendChild(option);
             });
 
@@ -597,9 +639,72 @@
       function onVaultChange() {
         const select = document.getElementById('vaultSelect');
         currentVaultId = select.value ? parseInt(select.value) : null;
+        
+        const option = select.selectedOptions[0];
+        if (option && option.dataset.isPending === 'true') {
+            showAcceptInviteModal();
+            return;
+        }
+
         updateManageButton();
         loadItems();
         resetInactivityTimer();
+      }
+
+      // Show accept invite modal
+      function showAcceptInviteModal() {
+          document.getElementById('acceptInviteModal').style.display = 'block';
+          document.getElementById('inviteCodeInput').value = '';
+          document.getElementById('acceptInviteMasterPassword').value = '';
+          document.getElementById('acceptInviteError').style.display = 'none';
+          document.getElementById('inviteCodeInput').focus();
+      }
+
+      // Hide accept invite modal
+      function hideAcceptInviteModal() {
+          document.getElementById('acceptInviteModal').style.display = 'none';
+          // Reset selection to default or empty if cancelled
+          loadVaults(); 
+      }
+
+      // Accept invite
+      async function acceptInvite() {
+          const inviteCode = document.getElementById('inviteCodeInput').value.trim();
+          const masterPass = document.getElementById('acceptInviteMasterPassword').value;
+
+          if (!inviteCode || !masterPass) {
+              document.getElementById('acceptInviteError').textContent = 'All fields are required';
+              document.getElementById('acceptInviteError').style.display = 'block';
+              return;
+          }
+
+          try {
+              const response = await authFetch(`${API_BASE}/vaults/${currentVaultId}/accept-invite`, {
+                  method: 'POST',
+                  body: JSON.stringify({
+                      inviteCode: inviteCode,
+                      masterPassword: masterPass
+                  })
+              });
+
+              const data = await response.json();
+
+              if (response.ok) {
+                  hideAcceptInviteModal();
+                  showMessage('Invite accepted successfully!', 'success');
+                  // Update master password in memory if it matches (likely does if they just entered it)
+                  if (!masterPassword) {
+                      masterPassword = masterPass;
+                  }
+                  loadVaults();
+              } else {
+                  document.getElementById('acceptInviteError').textContent = data.error || 'Failed to accept invite';
+                  document.getElementById('acceptInviteError').style.display = 'block';
+              }
+          } catch (error) {
+              document.getElementById('acceptInviteError').textContent = 'Error: ' + error.message;
+              document.getElementById('acceptInviteError').style.display = 'block';
+          }
       }
 
       // Update manage button visibility
@@ -771,7 +876,15 @@
           if (response.ok) {
             document.getElementById('addMemberUsername').value = '';
             document.getElementById('addMemberError').style.display = 'none';
-            showMessage(data.message || 'Member added successfully! They will need to provide their master password when first accessing the vault.', 'success');
+            
+            // Show invite code
+            if (data.inviteCode) {
+                document.getElementById('generatedInviteCode').textContent = data.inviteCode;
+                document.getElementById('inviteCodeDisplay').style.display = 'block';
+            } else {
+                showMessage(data.message || 'Member added successfully.', 'success');
+            }
+            
             await loadVaultMembers();
             loadVaults();
           } else {
@@ -798,9 +911,8 @@
           const data = await response.json();
 
           if (response.ok) {
-            showMessage('Member removed successfully!', 'success');
             await loadVaultMembers();
-            loadVaults();
+            showMessage('Member removed successfully', 'success');
           } else {
             showMessage(data.error || 'Failed to remove member', 'error');
           }
@@ -808,6 +920,17 @@
           showMessage('Error: ' + error.message, 'error');
         }
       }
+
+      function copyInviteCode() {
+          const code = document.getElementById('generatedInviteCode').textContent;
+          navigator.clipboard.writeText(code).then(() => {
+              const btn = document.querySelector('#inviteCodeDisplay button:nth-of-type(1)'); // Copy button
+              const originalText = btn.textContent;
+              btn.textContent = '✓ Copied!';
+              setTimeout(() => btn.textContent = originalText, 2000);
+          });
+      }
+
 
       // Escape HTML to prevent XSS
       function escapeHtml(text) {

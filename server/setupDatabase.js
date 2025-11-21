@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS vault_members (
     vault_id INTEGER NOT NULL,
     user_id INTEGER NOT NULL,
     encrypted_vault_key TEXT,
+    encrypted_vault_key_pending TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (vault_id) REFERENCES vaults(id) ON DELETE CASCADE,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
@@ -87,6 +88,14 @@ try {
 try {
     db.exec(`ALTER TABLE vaults ADD COLUMN vault_key_encrypted TEXT;`);
     console.log("✅ Added vault_key_encrypted column to vaults table");
+} catch (e) {
+    // Column already exists, ignore
+}
+
+// Migrate existing tables: add encrypted_vault_key_pending to vault_members if it doesn't exist
+try {
+    db.exec(`ALTER TABLE vault_members ADD COLUMN encrypted_vault_key_pending TEXT;`);
+    console.log("✅ Added encrypted_vault_key_pending column to vault_members table");
 } catch (e) {
     // Column already exists, ignore
 }
