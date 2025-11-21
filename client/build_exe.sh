@@ -14,13 +14,6 @@ if [ ! -d "node_modules" ]; then
     npm install
 fi
 
-# Check for icon.ico
-if [ -f "icon.ico" ]; then
-    echo "🖼️  Found icon.ico, using it for build..."
-else
-    echo "⚠️  Warning: icon.ico not found! Build will use default Electron icon."
-fi
-
 # Build for Windows using electron-builder
 echo "🔨 Building .exe..."
 # Use npx to ensure we use the local or download if missing
